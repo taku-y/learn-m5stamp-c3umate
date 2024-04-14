@@ -4,6 +4,8 @@
 
 ## 環境構築
 
+* [こちらの記事](https://docs.esp-rs.org/std-training/02_2_software.html)を参考にした。
+
 * ツールチェインのインストール
   ```console
   rustup toolchain install nightly-2023-11-14 --component rust-src
