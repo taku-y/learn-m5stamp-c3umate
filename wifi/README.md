@@ -1,6 +1,6 @@
 # wifi
 
-このプロジェクトはM5Stack C3U MateでWifiに接続する例です。
+このプロジェクトはM5Stamp C3U MateでWifiに接続する例です。
 
 ## 実行
 
@@ -12,7 +12,7 @@ CRATE_CC_NO_DEFAULTS=1 cargo espflash --release --monitor /dev/cu.usbmodem1101
 
 ## 環境構築
 
-このプロジェクトは[テンプレート](https://docs.esp-rs.org/book/writing-your-own-application/generate-project/index.html#esp-idf-template)による雛形を修正して作成されました。
+このプロジェクトは[テンプレート](https://docs.esp-rs.org/book/writing-your-own-application/generate-project/index.html#esp-idf-template)を修正して作成されました。
 
 事前にツールチェインの設定が必要です。
 
