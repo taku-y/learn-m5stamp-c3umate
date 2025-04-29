@@ -12,16 +12,16 @@ fn main() { //  -> anyhow::Result<()> {
 
     let mut adc = AdcDriver::new(peripherals.adc1, &Config::new().calibration(true)).unwrap();
 
-    let mut adc_pin: esp_idf_hal::adc::AdcChannelDriver<{ attenuation::DB_11 }, _> =
+    let mut adc_pin: esp_idf_hal::adc::AdcChannelDriver<{ attenuation::NONE }, _> =
         AdcChannelDriver::new(peripherals.pins.gpio0).unwrap();
 
     loop {
         let a = adc.read(&mut adc_pin).unwrap();
 
-        if a > 1700 || a < 1600 {
-            println!("ADC value: {}", a);
-        }
-        // println!("ADC value: {}", a);
+        // if a > 1700 || a < 1600 {
+        //     println!("ADC value: {}", a);
+        // }
+        println!("ADC value: {}", a);
         FreeRtos::delay_ms(100);
     }
 }

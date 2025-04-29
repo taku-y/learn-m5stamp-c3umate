@@ -22,16 +22,16 @@ fn main() {
     let mut driver = LedcDriver::new(
         peripherals.ledc.channel0,
         timer_driver,
-        peripherals.pins.gpio10,
+        peripherals.pins.gpio8,
     )
     .unwrap();
 
     // Get Max Duty and Calculate Upper and Lower Limits for Servo
     let max_duty = driver.get_max_duty();
     println!("Max Duty {}", max_duty);
-    let min_limit = max_duty * 25 / 1000;
+    let min_limit = max_duty * 5 / 10 / 20;
     println!("Min Limit {}", min_limit);
-    let max_limit = max_duty * 125 / 1000;
+    let max_limit = max_duty * 24 / 10 / 20;
     println!("Max Limit {}", max_limit);
 
     // Define Starting Position
@@ -51,7 +51,7 @@ fn main() {
                 .set_duty(map(angle, 0, 180, min_limit, max_limit))
                 .unwrap();
             // Give servo some time to update
-            FreeRtos::delay_ms(12);
+            FreeRtos::delay_ms(50);
         }
 
         // Sweep from 180 degrees to 0 degrees
@@ -63,7 +63,7 @@ fn main() {
                 .set_duty(map(angle, 0, 180, min_limit, max_limit))
                 .unwrap();
             // Give servo some time to update
-            FreeRtos::delay_ms(12);
+            FreeRtos::delay_ms(50);
         }
     }
 }
