@@ -16,6 +16,13 @@ impl Obs for PendulumEnvObs {
     }
 }
 
+impl PendulumEnvObs {
+    /// Get the observation value.
+    pub fn value(&self) -> f32 {
+        self.value
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PendulumEnvAct {
     #[allow(dead_code)]
@@ -28,6 +35,13 @@ impl Act for PendulumEnvAct {
     }
 }
 
+impl PendulumEnvAct {
+    /// Get the action value.
+    pub fn value(&self) -> f32 {
+        self.action
+    }
+}
+
 impl From<f32> for PendulumEnvAct {
     fn from(action: f32) -> Self {
         PendulumEnvAct { action }
@@ -35,7 +49,7 @@ impl From<f32> for PendulumEnvAct {
 }
 
 pub struct PendulumEnv<'d> {
-    // sensor: As5600<I2cDriver<'d>>,
+    sensor: As5600<I2cDriver<'d>>,
     motor: LedcDriver<'d>,
     min_limit: u32,
     max_limit: u32,
@@ -56,7 +70,10 @@ impl<'d> Env for PendulumEnv<'d> {
         let value = self.angle();
         let obs = PendulumEnvObs { value: value as _ };
         let act = action.clone();
-        println!("{:?}", value);
+        let value = 180.0 * (2.0 * act.value() + 1.0);
+        let duty = self.map(value as _);
+        self.motor.set_duty(duty).unwrap();
+        println!("obs, act, duty = ({:?}, {:?}, {:?})", obs.value(), act.value(), duty);
 
         let step = Step::new(
             obs,
@@ -90,16 +107,15 @@ impl<'d> Env for PendulumEnv<'d> {
 
 impl<'d> PendulumEnv<'d> {
     /// Create a new PendulumEnv from devices on ESP32.
-    // pub fn from_devices(sensor: As5600<I2cDriver<'d>>, motor: LedcDriver<'d>) -> Self {
-    pub fn from_devices(motor: LedcDriver<'d>) -> Self {
+    pub fn from_devices(sensor: As5600<I2cDriver<'d>>, motor: LedcDriver<'d>) -> Self {
         let max_duty = motor.get_max_duty();
-        let min_limit = max_duty * 5 / 10 / 20; // 5% of max duty
-        let max_limit = max_duty * 24 / 10 / 20; // 95% of max duty
+        let min_limit = max_duty * 5 / 10 / 20;
+        let max_limit = max_duty * 24 / 10 / 20;
         println!("Min Limit {}", min_limit);
         println!("Max Duty {}", max_limit);
         FreeRtos::delay_ms(2000);
         PendulumEnv {
-            // sensor,
+            sensor,
             motor,
             min_limit,
             max_limit,

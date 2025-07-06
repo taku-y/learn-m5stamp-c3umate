@@ -8,10 +8,9 @@ use as5600::As5600;
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{InputPin, OutputPin};
 use esp_idf_svc::hal::i2c::*;
-// use esp_idf_svc::hal::ledc::{
-//     config::TimerConfig, LedcChannel, LedcDriver, LedcTimer, LedcTimerDriver, Resolution,
-// };
-use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver, Resolution};
+use esp_idf_svc::hal::ledc::{
+    config::TimerConfig, LedcChannel, LedcDriver, LedcTimer, LedcTimerDriver, Resolution,
+};
 use esp_idf_svc::hal::peripheral::Peripheral;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::hal::prelude::*;
@@ -95,27 +94,23 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
 
     // Devices
-    // let as5600 = create_as5600(
-    //     peripherals.i2c0,
-    //     peripherals.pins.gpio5,
-    //     peripherals.pins.gpio6,
-    // )?;
+    let as5600 = create_as5600(
+        peripherals.i2c0,
+        peripherals.pins.gpio5,
+        peripherals.pins.gpio6,
+    )?;
     let timer_driver = LedcTimerDriver::new(
         peripherals.ledc.timer0,
         &TimerConfig::new()
-            .frequency(50.kHz().into())
+            .frequency(50.Hz())
             .resolution(Resolution::Bits14),
-    )
-    .unwrap();
-    let mut motor = LedcDriver::new(
+    )?;
+    let motor = LedcDriver::new(
         peripherals.ledc.channel0,
         timer_driver,
         peripherals.pins.gpio7,
-    )
-    .unwrap();
-    let _ = motor.set_duty(1000).unwrap();
+    )?;
     FreeRtos::delay_ms(5000);
-    panic!();
     let mut buttons = Buttons::new(
         peripherals.pins.gpio0,
         peripherals.pins.gpio1,
@@ -124,9 +119,8 @@ fn main() -> Result<()> {
     );
     buttons.enable_interrupt()?;
 
-    // let mut env = env::PendulumEnv::from_devices(as5600, motor);
-    let mut env = env::PendulumEnv::from_devices(motor);
-    let mut sin_policy = sin_policy::SinPolicy::new(0.5);
+    let mut env = env::PendulumEnv::from_devices(as5600, motor);
+    let mut sin_policy = sin_policy::SinPolicy::new(1.0);
     let mut evaluator = PendulumEvaluator::new(peripherals.timer00);
 
     loop {
