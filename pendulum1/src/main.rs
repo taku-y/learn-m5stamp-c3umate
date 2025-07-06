@@ -5,18 +5,22 @@ mod sin_policy;
 
 use anyhow::Result;
 use as5600::As5600;
-use env::PendulumEnv;
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{InputPin, OutputPin};
 use esp_idf_svc::hal::i2c::*;
+// use esp_idf_svc::hal::ledc::{
+//     config::TimerConfig, LedcChannel, LedcDriver, LedcTimer, LedcTimerDriver, Resolution,
+// };
+use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver, Resolution};
 use esp_idf_svc::hal::peripheral::Peripheral;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::hal::prelude::*;
+
+use buttons::Buttons;
+use env::PendulumEnv;
 use evaluator::PendulumEvaluator;
 use sin_policy::SinPolicy;
 use std::sync::atomic::{AtomicU8, Ordering};
-
-use buttons::Buttons;
 
 static STATE: AtomicU8 = AtomicU8::new(0);
 
@@ -61,6 +65,23 @@ fn create_as5600<'d>(
     Ok(As5600::new(i2c_driver))
 }
 
+// fn create_motor<'d>(
+//     timer: impl Peripheral<P = impl LedcTimer> + 'd,
+//     channel: impl Peripheral<P = impl LedcChannel> + 'd,
+//     pin: impl Peripheral<P = impl OutputPin> + 'd,
+// ) -> Result<LedcDriver<'d>> {
+//     LedcDriver::new(
+//         channel,
+//         LedcTimerDriver::new(
+//             timer,
+//             &TimerConfig::new()
+//                 .frequency(50.kHz().into())
+//                 .resolution(Resolution::Bits14),
+//         )?,
+//         pin,
+//     )
+// }
+
 fn main() -> Result<()> {
     // It is necessary to call this function once. Otherwise some patches to the runtime
     // implemented by esp-idf-sys might not link properly. See https://github.com/esp-rs/esp-idf-template/issues/71
@@ -74,11 +95,27 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
 
     // Devices
-    let as5600 = create_as5600(
-        peripherals.i2c0,
-        peripherals.pins.gpio6,
+    // let as5600 = create_as5600(
+    //     peripherals.i2c0,
+    //     peripherals.pins.gpio5,
+    //     peripherals.pins.gpio6,
+    // )?;
+    let timer_driver = LedcTimerDriver::new(
+        peripherals.ledc.timer0,
+        &TimerConfig::new()
+            .frequency(50.kHz().into())
+            .resolution(Resolution::Bits14),
+    )
+    .unwrap();
+    let mut motor = LedcDriver::new(
+        peripherals.ledc.channel0,
+        timer_driver,
         peripherals.pins.gpio7,
-    )?;
+    )
+    .unwrap();
+    let _ = motor.set_duty(1000).unwrap();
+    FreeRtos::delay_ms(5000);
+    panic!();
     let mut buttons = Buttons::new(
         peripherals.pins.gpio0,
         peripherals.pins.gpio1,
@@ -87,7 +124,8 @@ fn main() -> Result<()> {
     );
     buttons.enable_interrupt()?;
 
-    let mut env = env::PendulumEnv::from_devices(as5600);
+    // let mut env = env::PendulumEnv::from_devices(as5600, motor);
+    let mut env = env::PendulumEnv::from_devices(motor);
     let mut sin_policy = sin_policy::SinPolicy::new(0.5);
     let mut evaluator = PendulumEvaluator::new(peripherals.timer00);
 

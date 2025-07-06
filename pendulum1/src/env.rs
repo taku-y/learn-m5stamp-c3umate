@@ -1,11 +1,8 @@
 use anyhow::Result;
 use as5600::As5600;
 use border_core::{record::Record, Act, Env, Obs, Step};
-use esp_idf_svc::hal::i2c::I2cDriver;
-
-pub struct PendulumEnv<'d> {
-    sensor: As5600<I2cDriver<'d>>,
-}
+use esp_idf_svc::hal::delay::FreeRtos;
+use esp_idf_svc::hal::{i2c::I2cDriver, ledc::LedcDriver};
 
 #[derive(Debug, Clone)]
 pub struct PendulumEnvObs {
@@ -37,6 +34,13 @@ impl From<f32> for PendulumEnvAct {
     }
 }
 
+pub struct PendulumEnv<'d> {
+    // sensor: As5600<I2cDriver<'d>>,
+    motor: LedcDriver<'d>,
+    min_limit: u32,
+    max_limit: u32,
+}
+
 impl<'d> Env for PendulumEnv<'d> {
     type Config = ();
     type Act = PendulumEnvAct;
@@ -49,7 +53,7 @@ impl<'d> Env for PendulumEnv<'d> {
     }
 
     fn step(&mut self, action: &PendulumEnvAct) -> (Step<Self>, Record) {
-        let value = self.sensor.angle().unwrap();
+        let value = self.angle();
         let obs = PendulumEnvObs { value: value as _ };
         let act = action.clone();
         println!("{:?}", value);
@@ -68,7 +72,11 @@ impl<'d> Env for PendulumEnv<'d> {
     }
 
     fn reset(&mut self, _is_done: Option<&Vec<i8>>) -> anyhow::Result<Self::Obs> {
-        todo!();
+        let _ = self.motor.set_duty(self.map(90)).unwrap();
+        println!("Resetting pendulum to 90 degrees (duty={})", self.map(90));
+        FreeRtos::delay_ms(2000); // Allow time for the motor to move
+        let value = self.angle();
+        Ok(PendulumEnvObs { value: value as _ })
     }
 
     fn reset_with_index(&mut self, _ix: usize) -> anyhow::Result<Self::Obs> {
@@ -82,7 +90,35 @@ impl<'d> Env for PendulumEnv<'d> {
 
 impl<'d> PendulumEnv<'d> {
     /// Create a new PendulumEnv from devices on ESP32.
-    pub fn from_devices(sensor: As5600<I2cDriver<'d>>) -> Self {
-        PendulumEnv { sensor }
+    // pub fn from_devices(sensor: As5600<I2cDriver<'d>>, motor: LedcDriver<'d>) -> Self {
+    pub fn from_devices(motor: LedcDriver<'d>) -> Self {
+        let max_duty = motor.get_max_duty();
+        let min_limit = max_duty * 5 / 10 / 20; // 5% of max duty
+        let max_limit = max_duty * 24 / 10 / 20; // 95% of max duty
+        println!("Min Limit {}", min_limit);
+        println!("Max Duty {}", max_limit);
+        FreeRtos::delay_ms(2000);
+        PendulumEnv {
+            // sensor,
+            motor,
+            min_limit,
+            max_limit,
+        }
+    }
+
+    // Function that maps one range to another
+    fn map(&self, x: u32) -> u32 {
+        let in_min = 0;
+        let in_max = 180;
+        let out_min = self.min_limit;
+        let out_max = self.max_limit;
+
+        (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+    }
+
+    fn angle(&self) -> f32 {
+        0.0
+        // let angle = self.sensor.angle()?;
+        // Ok(angle as f32)
     }
 }

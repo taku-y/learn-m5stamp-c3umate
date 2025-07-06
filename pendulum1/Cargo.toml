@@ -25,6 +25,7 @@ experimental = ["esp-idf-svc/experimental"]
 [dependencies]
 log = "0.4"
 esp-idf-svc = "0.51"
+esp-idf-hal = "0.45.2"
 anyhow = "1"
 border-core = { version = "0.0.8" }
 as5600 = { git = "https://github.com/barafael/as5600-rs" }
