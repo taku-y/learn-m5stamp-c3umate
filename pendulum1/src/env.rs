@@ -72,7 +72,7 @@ impl<'d> Env for PendulumEnv<'d> {
         let act = action.clone();
         let value = 180.0 * (2.0 * act.value() + 1.0);
         let duty = self.map(value as _);
-        self.motor.set_duty(duty).unwrap();
+        // self.motor.set_duty(duty).unwrap();
         println!("obs, act, duty = ({:?}, {:?}, {:?})", obs.value(), act.value(), duty);
 
         let step = Step::new(
@@ -89,7 +89,7 @@ impl<'d> Env for PendulumEnv<'d> {
     }
 
     fn reset(&mut self, _is_done: Option<&Vec<i8>>) -> anyhow::Result<Self::Obs> {
-        let _ = self.motor.set_duty(self.map(90)).unwrap();
+        // let _ = self.motor.set_duty(self.map(90)).unwrap();
         println!("Resetting pendulum to 90 degrees (duty={})", self.map(90));
         FreeRtos::delay_ms(2000); // Allow time for the motor to move
         let value = self.angle();
@@ -132,9 +132,7 @@ impl<'d> PendulumEnv<'d> {
         (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
     }
 
-    fn angle(&self) -> f32 {
-        0.0
-        // let angle = self.sensor.angle()?;
-        // Ok(angle as f32)
+    fn angle(&mut self) -> f32 {
+        self.sensor.angle().unwrap() as _
     }
 }

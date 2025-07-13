@@ -61,7 +61,24 @@ fn create_as5600<'d>(
     let config = I2cConfig::new().baudrate(100.kHz().into());
     let i2c_driver = I2cDriver::new(i2c, sda, scl, &config)?;
 
-    Ok(As5600::new(i2c_driver))
+    let mut as5600 = As5600::new(i2c_driver);
+
+    let config = as5600.config().unwrap();
+    println!("{:?}", config);
+
+    FreeRtos::delay_ms(2000);
+
+    let status = as5600.magnet_status().unwrap();
+    let agc = as5600.automatic_gain_control().unwrap();
+    let mag = as5600.magnitude().unwrap();
+    let zmco = as5600.zmco().unwrap();
+
+    println!("{:?}", status);
+    println!("{:?}", agc);
+    println!("{:?}", mag);
+    println!("{:?}", zmco);
+
+    Ok(as5600)
 }
 
 // fn create_motor<'d>(
@@ -94,11 +111,25 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
 
     // Devices
-    let as5600 = create_as5600(
-        peripherals.i2c0,
-        peripherals.pins.gpio5,
-        peripherals.pins.gpio6,
-    )?;
+    let config = I2cConfig::new().baudrate(100.kHz().into());
+    let i2c_driver = I2cDriver::new(peripherals.i2c0, peripherals.pins.gpio0, peripherals.pins.gpio1, &config)?;
+    let mut as5600 = As5600::new(i2c_driver);
+    FreeRtos::delay_ms(2000);
+    let status = as5600.magnet_status().unwrap();
+    let agc = as5600.automatic_gain_control().unwrap();
+    let mag = as5600.magnitude().unwrap();
+    let zmco = as5600.zmco().unwrap();
+    println!("{:?}", status);
+    println!("{:?}", agc);
+    println!("{:?}", mag);
+    println!("{:?}", zmco);
+
+    // let as5600 = create_as5600(
+    //     peripherals.i2c0,
+    //     peripherals.pins.gpio3,
+    //     peripherals.pins.gpio4,
+    // )?;
+
     let timer_driver = LedcTimerDriver::new(
         peripherals.ledc.timer0,
         &TimerConfig::new()
@@ -108,14 +139,15 @@ fn main() -> Result<()> {
     let motor = LedcDriver::new(
         peripherals.ledc.channel0,
         timer_driver,
-        peripherals.pins.gpio7,
+        peripherals.pins.gpio20,
     )?;
     FreeRtos::delay_ms(5000);
+
     let mut buttons = Buttons::new(
-        peripherals.pins.gpio0,
-        peripherals.pins.gpio1,
-        peripherals.pins.gpio10,
-        peripherals.pins.gpio8,
+        peripherals.pins.gpio7,
+        peripherals.pins.gpio6,
+        peripherals.pins.gpio5,
+        peripherals.pins.gpio4,
     );
     buttons.enable_interrupt()?;
 
