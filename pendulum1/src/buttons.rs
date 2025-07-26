@@ -19,7 +19,8 @@ fn gpio_interrupt_handler1() {
         crate::OFFSET_CORRECTION => set_state(crate::OFFSET_CORRECTION_CANCEL),
         crate::POTENTIOMETER_MIN => set_state(crate::POTENTIOMETER_CANCEL),
         crate::POTENTIOMETER_MAX => set_state(crate::POTENTIOMETER_CANCEL),
-        crate::RUN_AUTO => set_state(crate::IDLE),
+        crate::AUTO_POLICY => set_state(crate::IDLE),
+        crate::MANUAL_POLICY => set_state(crate::IDLE),
         crate::IDLE => set_state(crate::TERMINATE),
         _ => {}, // do nothing
     }
@@ -39,7 +40,8 @@ fn gpio_interrupt_handler2() {
 // Handlers for the run episode button.
 fn gpio_interrupt_handler3() {
     match get_state() {
-        crate::IDLE => set_state(crate::RUN_AUTO),
+        crate::IDLE => set_state(crate::AUTO_POLICY),
+        crate::AUTO_POLICY => set_state(crate::MANUAL_POLICY_START),
         _ => {}, // do nothing
     }
 }

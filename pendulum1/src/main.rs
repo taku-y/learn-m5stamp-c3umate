@@ -32,7 +32,9 @@ const OFFSET_CORRECTION_CANCEL: u8 = 12;
 const POTENTIOMETER_MIN: u8 = 13;
 const POTENTIOMETER_MAX: u8 = 14;
 const POTENTIOMETER_CANCEL: u8 = 15;
-const RUN_AUTO: u8 = 21;
+const AUTO_POLICY: u8 = 21;
+const MANUAL_POLICY_START: u8 = 22;
+const MANUAL_POLICY: u8 = 23;
 const TERMINATE: u8 = 255;
 
 fn create_as5600<'d>(
@@ -164,29 +166,32 @@ fn main() -> Result<()> {
             POTENTIOMETER_MIN => {
                 log::info!("Take minimum potentiometer value");
                 FreeRtos::delay_ms(1000);
-                let _value = manual_policy.take_potentiometer_value(POTENTIOMETER_MIN);
+                let value = manual_policy.take_potentiometer_value(POTENTIOMETER_MIN);
 
                 if get_state() == POTENTIOMETER_CANCEL {
                     set_state(IDLE);
                 } else {
-                    // do something with the value
+                    manual_policy.set_min_limit(value);
                 }
             }
 
             POTENTIOMETER_MAX => {
                 log::info!("Take maximum potentiometer value");
                 FreeRtos::delay_ms(1000);
-                let _value = manual_policy.take_potentiometer_value(POTENTIOMETER_MAX);
+                let value = manual_policy.take_potentiometer_value(POTENTIOMETER_MAX);
 
                 if get_state() == POTENTIOMETER_CANCEL {
                     set_state(IDLE);
                 } else {
-                    // do something with the value
+                    manual_policy.set_max_limit(value);
                 }
             }
 
             // Run an episode
-            RUN_AUTO => evaluator.evaluate(&mut auto_policy, &mut env, 0).unwrap(),
+            AUTO_POLICY => evaluator.evaluate(&mut auto_policy, &mut env, 0).unwrap(),
+
+            // Run an episode
+            MANUAL_POLICY => evaluator.evaluate(&mut manual_policy, &mut env, 0).unwrap(),
 
             // Terminate the program
             TERMINATE => {

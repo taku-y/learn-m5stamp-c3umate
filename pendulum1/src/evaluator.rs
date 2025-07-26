@@ -42,6 +42,9 @@ impl PendulumEvaluator<'_> {
             let state = crate::STATE.load(Ordering::Relaxed);
             if state == crate::IDLE {
                 break;
+            } else if state ==  crate::MANUAL_POLICY_START {
+                crate::set_state(crate::MANUAL_POLICY);
+                break;
             }
 
             // Wait for 20ms to simulate the 50Hz sampling frequency
