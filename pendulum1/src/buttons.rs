@@ -4,16 +4,30 @@ use esp_idf_svc::hal::gpio::*;
 use esp_idf_svc::hal::peripheral::Peripheral;
 use std::sync::atomic::Ordering;
 
+fn get_state() -> u8 {
+    crate::STATE.load(Ordering::Relaxed)
+}
+
+fn set_state(state: u8) {
+    crate::STATE.store(state, Ordering::Relaxed);
+}
+
+/// Handlers for the reset button.
 fn gpio_interrupt_handler1() {
-    if crate::STATE.load(Ordering::Relaxed) == 0 {
-        crate::STATE.store(1, Ordering::Relaxed);
-    } else {
-        crate::STATE.store(0, Ordering::Relaxed);
+    match get_state()
+    {
+        crate::OFFSET_CORRECTION => set_state(crate::OFFSET_CORRECTION_CANCEL),
+        _ => {}, // do nothing
     }
 }
 
+/// Handlers for the offset correction button.
 fn gpio_interrupt_handler2() {
-    crate::STATE.store(2, Ordering::Relaxed);
+    match get_state() {
+        crate::IDLE => set_state(crate::OFFSET_CORRECTION),
+        crate::OFFSET_CORRECTION => set_state(crate::OFFSET_CORRECTION_END),
+        _ => {}, // do nothing
+    }
 }
 
 fn gpio_interrupt_handler3() {

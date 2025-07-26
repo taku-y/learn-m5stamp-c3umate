@@ -23,29 +23,47 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 static STATE: AtomicU8 = AtomicU8::new(0);
 
+
+const IDLE: u8 = 0;
+const OFFSET_CORRECTION: u8 = 10;
+const OFFSET_CORRECTION_END: u8 = 11;
+const OFFSET_CORRECTION_CANCEL: u8 = 12;
+
 fn polling(env: &mut PendulumEnv, evaluator: &mut PendulumEvaluator, policy1: &mut SinPolicy) {
-    log::info!("polling: {}", STATE.load(Ordering::Relaxed));
     match STATE.load(Ordering::Relaxed) {
         // Idle
-        0 => FreeRtos::delay_ms(50),
+        IDLE => {
+            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
+            FreeRtos::delay_ms(1000);
+        }
+
+        // Offset correction
+        OFFSET_CORRECTION => {
+            // Start pooling loop inside PendulumEnv for offset correction
+            env.correct_offset();
+            STATE.store(0, Ordering::Relaxed);
+        }
 
         // Run an episode
         1 => evaluator.evaluate(policy1, env, 0).unwrap(),
 
         // Send episode data to the server
         2 => {
+            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
             FreeRtos::delay_ms(1000);
             STATE.store(0, Ordering::Relaxed);
         }
 
         // Receive model parameters from the server
         3 => {
+            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
             FreeRtos::delay_ms(1000);
             STATE.store(0, Ordering::Relaxed);
         }
 
         // Clear the episode data
         4 => {
+            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
             FreeRtos::delay_ms(1000);
             STATE.store(0, Ordering::Relaxed);
         }
@@ -111,6 +129,7 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
 
     // Devices
+    log::info!("Initialize I2C for rotary encoder...");
     let config = I2cConfig::new().baudrate(100.kHz().into());
     let i2c_driver = I2cDriver::new(peripherals.i2c0, peripherals.pins.gpio0, peripherals.pins.gpio1, &config)?;
     let mut as5600 = As5600::new(i2c_driver);
@@ -130,6 +149,7 @@ fn main() -> Result<()> {
     //     peripherals.pins.gpio4,
     // )?;
 
+    log::info!("Initialize LEDC for motor control...");
     let timer_driver = LedcTimerDriver::new(
         peripherals.ledc.timer0,
         &TimerConfig::new()
@@ -143,18 +163,21 @@ fn main() -> Result<()> {
     )?;
     FreeRtos::delay_ms(5000);
 
+    log::info!("Initialize buttons...");
     let mut buttons = Buttons::new(
-        peripherals.pins.gpio7,
         peripherals.pins.gpio6,
         peripherals.pins.gpio5,
         peripherals.pins.gpio4,
+        peripherals.pins.gpio3,
     );
     buttons.enable_interrupt()?;
 
+    log::info!("Initialize PendulumEnv and SinPolicy...");
     let mut env = env::PendulumEnv::from_devices(as5600, motor);
     let mut sin_policy = sin_policy::SinPolicy::new(1.0);
     let mut evaluator = PendulumEvaluator::new(peripherals.timer00);
 
+    log::info!("Starting main loop");
     loop {
         polling(&mut env, &mut evaluator, &mut sin_policy);
         buttons.enable_interrupt()?;

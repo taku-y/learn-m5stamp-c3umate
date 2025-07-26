@@ -3,6 +3,7 @@ use as5600::As5600;
 use border_core::{record::Record, Act, Env, Obs, Step};
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::{i2c::I2cDriver, ledc::LedcDriver};
+use std::sync::atomic::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct PendulumEnvObs {
@@ -53,6 +54,8 @@ pub struct PendulumEnv<'d> {
     motor: LedcDriver<'d>,
     min_limit: u32,
     max_limit: u32,
+    offset: f32,
+    direction: f32,
 }
 
 impl<'d> Env for PendulumEnv<'d> {
@@ -73,7 +76,12 @@ impl<'d> Env for PendulumEnv<'d> {
         let value = 180.0 * (2.0 * act.value() + 1.0);
         let duty = self.map(value as _);
         // self.motor.set_duty(duty).unwrap();
-        println!("obs, act, duty = ({:?}, {:?}, {:?})", obs.value(), act.value(), duty);
+        println!(
+            "obs, act, duty = ({:?}, {:?}, {:?})",
+            obs.value(),
+            act.value(),
+            duty
+        );
 
         let step = Step::new(
             obs,
@@ -119,6 +127,8 @@ impl<'d> PendulumEnv<'d> {
             motor,
             min_limit,
             max_limit,
+            offset: 0.0,
+            direction: 0.0,
         }
     }
 
@@ -132,7 +142,72 @@ impl<'d> PendulumEnv<'d> {
         (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
     }
 
+    /// Return the current angle of the pendulum in radians.
     fn angle(&mut self) -> f32 {
-        self.sensor.angle().unwrap() as _
+        // Get the angle in radians
+        let angle = self.sensor.angle().unwrap() as f32 * std::f32::consts::PI / 2048.0;
+        let angle = self.direction * angle - self.offset;
+        if angle < -std::f32::consts::PI {
+            angle + 2.0 * std::f32::consts::PI
+        } else if angle > std::f32::consts::PI {
+            angle - 2.0 * std::f32::consts::PI
+        } else {
+            angle
+        }
+    }
+
+    pub fn correct_offset(&mut self) {
+        let offset = self.sensor.angle().unwrap();
+        log::info!("Offset: {}", offset);
+        log::info!("Starting offset correction in 3 seconds...");
+        FreeRtos::delay_ms(3000);
+
+        loop {
+            let angle = self.sensor.angle().unwrap();
+            log::info!("Current angle: {} ({})", angle, self.angle());
+
+            if crate::STATE.load(Ordering::Relaxed) == crate::OFFSET_CORRECTION_END {
+                self.offset = offset as f32 * std::f32::consts::PI / 2048.0;
+                self.direction = get_direction(angle, offset) as f32;
+                if self.direction == 1.0 {
+                    log::info!("Counter-clockwise direction is positive.");
+                } else {
+                    log::info!("Counter-clockwise direction is negative.");
+                }
+                log::info!("Offset correction completed.");
+                FreeRtos::delay_ms(1000);
+                break;
+            } else if crate::STATE.load(Ordering::Relaxed) == crate::OFFSET_CORRECTION_CANCEL {
+                log::info!("Offset correction cancelled.");
+                FreeRtos::delay_ms(1000);
+                break;
+            }
+            FreeRtos::delay_ms(100);
+        }
+    }
+}
+
+/// Check the direction of the rotary encoder.
+///
+/// This function should be called when the pendulum is physically rotated counter-clockwise
+/// (roughly 10-20 degrees). If the angle is larger than the offset, it returns 1, meaning that
+/// the counter-clockwise direction corresponds to a positive angle. Otherwise, it returns -1,
+/// meaning that the counter-clockwise direction corresponds to a negative angle.
+///
+/// This function handles the case where the angle exceeds 4096, which is the maximum value of 
+/// the encoder with a 12-bit resolution.
+fn get_direction(angle: u16, offset: u16) -> i8 {
+    if angle > offset {
+        if angle - offset > 2048 {
+            -1 // Counter-clockwise is negative
+        } else {
+            1 // Counter-clockwise is positive
+        }
+    } else {
+        if offset - angle > 2048 {
+            1 // Counter-clockwise is positive
+        } else {
+            -1 // Counter-clockwise is negative
+        }
     }
 }
