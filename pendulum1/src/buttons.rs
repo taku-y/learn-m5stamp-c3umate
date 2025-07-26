@@ -17,6 +17,8 @@ fn gpio_interrupt_handler1() {
     match get_state()
     {
         crate::OFFSET_CORRECTION => set_state(crate::OFFSET_CORRECTION_CANCEL),
+        crate::RUN_AUTO => set_state(crate::IDLE),
+        crate::IDLE => set_state(crate::TERMINATE),
         _ => {}, // do nothing
     }
 }
@@ -30,8 +32,12 @@ fn gpio_interrupt_handler2() {
     }
 }
 
+// Handlers for the run episode button.
 fn gpio_interrupt_handler3() {
-    crate::STATE.store(3, Ordering::Relaxed);
+    match get_state() {
+        crate::IDLE => set_state(crate::RUN_AUTO),
+        _ => {}, // do nothing
+    }
 }
 
 fn gpio_interrupt_handler4() {

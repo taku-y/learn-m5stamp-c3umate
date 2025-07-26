@@ -56,6 +56,7 @@ pub struct PendulumEnv<'d> {
     max_limit: u32,
     offset: f32,
     direction: f32,
+    scale: f32,
 }
 
 impl<'d> Env for PendulumEnv<'d> {
@@ -73,9 +74,12 @@ impl<'d> Env for PendulumEnv<'d> {
         let value = self.angle();
         let obs = PendulumEnvObs { value: value as _ };
         let act = action.clone();
-        let value = 180.0 * (2.0 * act.value() + 1.0);
+
+        // Take action
+        let value = 180.0 * (self.scale * act.value() + 1.0) * 0.5;
         let duty = self.map(value as _);
-        // self.motor.set_duty(duty).unwrap();
+        self.motor.set_duty(duty).unwrap();
+
         println!(
             "obs, act, duty = ({:?}, {:?}, {:?})",
             obs.value(),
@@ -120,7 +124,7 @@ impl<'d> PendulumEnv<'d> {
         let min_limit = max_duty * 5 / 10 / 20;
         let max_limit = max_duty * 24 / 10 / 20;
         println!("Min Limit {}", min_limit);
-        println!("Max Duty {}", max_limit);
+        println!("Max Limit {}", max_limit);
         FreeRtos::delay_ms(2000);
         PendulumEnv {
             sensor,
@@ -129,6 +133,7 @@ impl<'d> PendulumEnv<'d> {
             max_limit,
             offset: 0.0,
             direction: 0.0,
+            scale: 0.6,
         }
     }
 
@@ -145,7 +150,7 @@ impl<'d> PendulumEnv<'d> {
     /// Return the current angle of the pendulum in radians.
     fn angle(&mut self) -> f32 {
         // Get the angle in radians
-        let angle = self.sensor.angle().unwrap() as f32 * std::f32::consts::PI / 2048.0;
+        let angle = self.sensor.angle().unwrap_or(0) as f32 * std::f32::consts::PI / 2048.0;
         let angle = self.direction * angle - self.offset;
         if angle < -std::f32::consts::PI {
             angle + 2.0 * std::f32::consts::PI
@@ -159,8 +164,8 @@ impl<'d> PendulumEnv<'d> {
     pub fn correct_offset(&mut self) {
         let offset = self.sensor.angle().unwrap();
         log::info!("Offset: {}", offset);
-        log::info!("Starting offset correction in 3 seconds...");
-        FreeRtos::delay_ms(3000);
+        log::info!("Starting offset correction in 1 second...");
+        FreeRtos::delay_ms(1000);
 
         loop {
             let angle = self.sensor.angle().unwrap();
@@ -194,7 +199,7 @@ impl<'d> PendulumEnv<'d> {
 /// the counter-clockwise direction corresponds to a positive angle. Otherwise, it returns -1,
 /// meaning that the counter-clockwise direction corresponds to a negative angle.
 ///
-/// This function handles the case where the angle exceeds 4096, which is the maximum value of 
+/// This function handles the case where the angle exceeds 4096, which is the maximum value of
 /// the encoder with a 12-bit resolution.
 fn get_direction(angle: u16, offset: u16) -> i8 {
     if angle > offset {

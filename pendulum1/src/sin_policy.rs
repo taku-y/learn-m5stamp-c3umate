@@ -18,7 +18,7 @@ impl SinPolicy {
 
 impl<'d> Policy<PendulumEnv<'d>> for SinPolicy {
     fn sample(&mut self, _obs: &PendulumEnvObs) -> PendulumEnvAct {
-        self.time += 0.05; // Increment time
+        self.time += 0.025; // Increment time
         (self.frequency * self.time).sin().into()
     }
 }

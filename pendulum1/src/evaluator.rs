@@ -40,7 +40,7 @@ impl PendulumEvaluator<'_> {
 
             // Break if the state changes to something other than running an episode
             let state = crate::STATE.load(Ordering::Relaxed);
-            if state != 1 {
+            if state == crate::IDLE {
                 break;
             }
 

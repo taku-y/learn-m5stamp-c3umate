@@ -23,11 +23,12 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 static STATE: AtomicU8 = AtomicU8::new(0);
 
-
 const IDLE: u8 = 0;
 const OFFSET_CORRECTION: u8 = 10;
 const OFFSET_CORRECTION_END: u8 = 11;
 const OFFSET_CORRECTION_CANCEL: u8 = 12;
+const RUN_AUTO: u8 = 21;
+const TERMINATE: u8 = 255;
 
 fn polling(env: &mut PendulumEnv, evaluator: &mut PendulumEvaluator, policy1: &mut SinPolicy) {
     match STATE.load(Ordering::Relaxed) {
@@ -45,7 +46,7 @@ fn polling(env: &mut PendulumEnv, evaluator: &mut PendulumEvaluator, policy1: &m
         }
 
         // Run an episode
-        1 => evaluator.evaluate(policy1, env, 0).unwrap(),
+        RUN_AUTO => evaluator.evaluate(policy1, env, 0).unwrap(),
 
         // Send episode data to the server
         2 => {
@@ -126,12 +127,20 @@ fn main() -> Result<()> {
 
     log::info!("Start program");
 
+    // Pins
     let peripherals = Peripherals::take().unwrap();
+    let pin_sda = peripherals.pins.gpio0;
+    let pin_scl = peripherals.pins.gpio1;
+    let pin_motor = peripherals.pins.gpio20;
+    let pin_button1 = peripherals.pins.gpio6;
+    let pin_button2 = peripherals.pins.gpio5;
+    let pin_button3 = peripherals.pins.gpio4;
+    let pin_button4 = peripherals.pins.gpio3;
 
     // Devices
     log::info!("Initialize I2C for rotary encoder...");
     let config = I2cConfig::new().baudrate(100.kHz().into());
-    let i2c_driver = I2cDriver::new(peripherals.i2c0, peripherals.pins.gpio0, peripherals.pins.gpio1, &config)?;
+    let i2c_driver = I2cDriver::new(peripherals.i2c0, pin_sda, pin_scl, &config)?;
     let mut as5600 = As5600::new(i2c_driver);
     FreeRtos::delay_ms(2000);
     let status = as5600.magnet_status().unwrap();
@@ -156,30 +165,65 @@ fn main() -> Result<()> {
             .frequency(50.Hz())
             .resolution(Resolution::Bits14),
     )?;
-    let motor = LedcDriver::new(
-        peripherals.ledc.channel0,
-        timer_driver,
-        peripherals.pins.gpio20,
-    )?;
+    let motor = LedcDriver::new(peripherals.ledc.channel0, timer_driver, pin_motor)?;
     FreeRtos::delay_ms(5000);
 
     log::info!("Initialize buttons...");
-    let mut buttons = Buttons::new(
-        peripherals.pins.gpio6,
-        peripherals.pins.gpio5,
-        peripherals.pins.gpio4,
-        peripherals.pins.gpio3,
-    );
+    let mut buttons = Buttons::new(pin_button1, pin_button2, pin_button3, pin_button4);
     buttons.enable_interrupt()?;
 
     log::info!("Initialize PendulumEnv and SinPolicy...");
     let mut env = env::PendulumEnv::from_devices(as5600, motor);
-    let mut sin_policy = sin_policy::SinPolicy::new(1.0);
+    let mut auto_policy = sin_policy::SinPolicy::new(1.0);
     let mut evaluator = PendulumEvaluator::new(peripherals.timer00);
 
     log::info!("Starting main loop");
     loop {
-        polling(&mut env, &mut evaluator, &mut sin_policy);
+        match STATE.load(Ordering::Relaxed) {
+            // Idle
+            IDLE => {
+                log::info!("polling: {}", STATE.load(Ordering::Relaxed));
+                FreeRtos::delay_ms(1000);
+            }
+
+            // Offset correction
+            OFFSET_CORRECTION => {
+                // Start pooling loop inside PendulumEnv for offset correction
+                env.correct_offset();
+                STATE.store(0, Ordering::Relaxed);
+            }
+
+            // Run an episode
+            RUN_AUTO => evaluator.evaluate(&mut auto_policy, &mut env, 0).unwrap(),
+
+            // Terminate the program
+            TERMINATE => {
+                log::info!("Terminating program...");
+                break;
+            }
+
+            // Send episode data to the server
+            2 => {
+                log::info!("polling: {}", STATE.load(Ordering::Relaxed));
+                FreeRtos::delay_ms(1000);
+                STATE.store(0, Ordering::Relaxed);
+            }
+
+            // Receive model parameters from the server
+            3 => {
+                log::info!("polling: {}", STATE.load(Ordering::Relaxed));
+                FreeRtos::delay_ms(1000);
+                STATE.store(0, Ordering::Relaxed);
+            }
+
+            // Clear the episode data
+            4 => {
+                log::info!("polling: {}", STATE.load(Ordering::Relaxed));
+                FreeRtos::delay_ms(1000);
+                STATE.store(0, Ordering::Relaxed);
+            }
+            _ => {}
+        }
         buttons.enable_interrupt()?;
     }
 
