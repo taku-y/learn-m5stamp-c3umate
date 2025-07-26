@@ -171,7 +171,7 @@ impl<'d> PendulumEnv<'d> {
             let angle = self.sensor.angle().unwrap();
             log::info!("Current angle: {} ({})", angle, self.angle());
 
-            if crate::STATE.load(Ordering::Relaxed) == crate::OFFSET_CORRECTION_END {
+            if get_state() == crate::OFFSET_CORRECTION_END {
                 self.offset = offset as f32 * std::f32::consts::PI / 2048.0;
                 self.direction = get_direction(angle, offset) as f32;
                 if self.direction == 1.0 {
@@ -182,7 +182,7 @@ impl<'d> PendulumEnv<'d> {
                 log::info!("Offset correction completed.");
                 FreeRtos::delay_ms(1000);
                 break;
-            } else if crate::STATE.load(Ordering::Relaxed) == crate::OFFSET_CORRECTION_CANCEL {
+            } else if get_state() == crate::OFFSET_CORRECTION_CANCEL {
                 log::info!("Offset correction cancelled.");
                 FreeRtos::delay_ms(1000);
                 break;
@@ -215,4 +215,8 @@ fn get_direction(angle: u16, offset: u16) -> i8 {
             -1 // Counter-clockwise is negative
         }
     }
+}
+
+fn get_state() -> u8 {
+    crate::STATE.load(Ordering::Relaxed)
 }

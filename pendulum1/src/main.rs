@@ -1,6 +1,7 @@
 mod buttons;
 mod env;
 mod evaluator;
+mod manual_policy;
 mod sin_policy;
 
 use anyhow::Result;
@@ -9,7 +10,7 @@ use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{InputPin, OutputPin};
 use esp_idf_svc::hal::i2c::*;
 use esp_idf_svc::hal::ledc::{
-    config::TimerConfig, LedcChannel, LedcDriver, LedcTimer, LedcTimerDriver, Resolution,
+    config::TimerConfig, LedcDriver, LedcTimerDriver, Resolution,
 };
 use esp_idf_svc::hal::peripheral::Peripheral;
 use esp_idf_svc::hal::peripherals::Peripherals;
@@ -19,6 +20,7 @@ use buttons::Buttons;
 use env::PendulumEnv;
 use evaluator::PendulumEvaluator;
 use sin_policy::SinPolicy;
+use manual_policy::ManualPolicy;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 static STATE: AtomicU8 = AtomicU8::new(0);
@@ -27,50 +29,11 @@ const IDLE: u8 = 0;
 const OFFSET_CORRECTION: u8 = 10;
 const OFFSET_CORRECTION_END: u8 = 11;
 const OFFSET_CORRECTION_CANCEL: u8 = 12;
+const POTENTIOMETER_MIN: u8 = 13;
+const POTENTIOMETER_MAX: u8 = 14;
+const POTENTIOMETER_CANCEL: u8 = 15;
 const RUN_AUTO: u8 = 21;
 const TERMINATE: u8 = 255;
-
-fn polling(env: &mut PendulumEnv, evaluator: &mut PendulumEvaluator, policy1: &mut SinPolicy) {
-    match STATE.load(Ordering::Relaxed) {
-        // Idle
-        IDLE => {
-            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
-            FreeRtos::delay_ms(1000);
-        }
-
-        // Offset correction
-        OFFSET_CORRECTION => {
-            // Start pooling loop inside PendulumEnv for offset correction
-            env.correct_offset();
-            STATE.store(0, Ordering::Relaxed);
-        }
-
-        // Run an episode
-        RUN_AUTO => evaluator.evaluate(policy1, env, 0).unwrap(),
-
-        // Send episode data to the server
-        2 => {
-            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
-            FreeRtos::delay_ms(1000);
-            STATE.store(0, Ordering::Relaxed);
-        }
-
-        // Receive model parameters from the server
-        3 => {
-            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
-            FreeRtos::delay_ms(1000);
-            STATE.store(0, Ordering::Relaxed);
-        }
-
-        // Clear the episode data
-        4 => {
-            log::info!("polling: {}", STATE.load(Ordering::Relaxed));
-            FreeRtos::delay_ms(1000);
-            STATE.store(0, Ordering::Relaxed);
-        }
-        _ => {}
-    }
-}
 
 fn create_as5600<'d>(
     i2c: I2C0,
@@ -127,15 +90,17 @@ fn main() -> Result<()> {
 
     log::info!("Start program");
 
-    // Pins
+    // Periherals
     let peripherals = Peripherals::take().unwrap();
     let pin_sda = peripherals.pins.gpio0;
     let pin_scl = peripherals.pins.gpio1;
     let pin_motor = peripherals.pins.gpio20;
-    let pin_button1 = peripherals.pins.gpio6;
-    let pin_button2 = peripherals.pins.gpio5;
-    let pin_button3 = peripherals.pins.gpio4;
-    let pin_button4 = peripherals.pins.gpio3;
+    let pin_button1 = peripherals.pins.gpio7;
+    let pin_button2 = peripherals.pins.gpio6;
+    let pin_button3 = peripherals.pins.gpio5;
+    let pin_button4 = peripherals.pins.gpio4;
+    let pin_potentiometer = peripherals.pins.gpio3;
+    let adc = peripherals.adc1;
 
     // Devices
     log::info!("Initialize I2C for rotary encoder...");
@@ -173,13 +138,16 @@ fn main() -> Result<()> {
     buttons.enable_interrupt()?;
 
     log::info!("Initialize PendulumEnv and SinPolicy...");
-    let mut env = env::PendulumEnv::from_devices(as5600, motor);
-    let mut auto_policy = sin_policy::SinPolicy::new(1.0);
+    let mut env = PendulumEnv::from_devices(as5600, motor);
+    let mut auto_policy = SinPolicy::new(1.0);
     let mut evaluator = PendulumEvaluator::new(peripherals.timer00);
+
+    log::info!("Initialize ManualPolicy...");
+    let mut manual_policy = ManualPolicy::new(adc, pin_potentiometer);
 
     log::info!("Starting main loop");
     loop {
-        match STATE.load(Ordering::Relaxed) {
+        match get_state() {
             // Idle
             IDLE => {
                 log::info!("polling: {}", STATE.load(Ordering::Relaxed));
@@ -190,7 +158,31 @@ fn main() -> Result<()> {
             OFFSET_CORRECTION => {
                 // Start pooling loop inside PendulumEnv for offset correction
                 env.correct_offset();
-                STATE.store(0, Ordering::Relaxed);
+                set_state(POTENTIOMETER_MIN);
+            }
+
+            POTENTIOMETER_MIN => {
+                log::info!("Take minimum potentiometer value");
+                FreeRtos::delay_ms(1000);
+                let _value = manual_policy.take_potentiometer_value(POTENTIOMETER_MIN);
+
+                if get_state() == POTENTIOMETER_CANCEL {
+                    set_state(IDLE);
+                } else {
+                    // do something with the value
+                }
+            }
+
+            POTENTIOMETER_MAX => {
+                log::info!("Take maximum potentiometer value");
+                FreeRtos::delay_ms(1000);
+                let _value = manual_policy.take_potentiometer_value(POTENTIOMETER_MAX);
+
+                if get_state() == POTENTIOMETER_CANCEL {
+                    set_state(IDLE);
+                } else {
+                    // do something with the value
+                }
             }
 
             // Run an episode
@@ -229,4 +221,12 @@ fn main() -> Result<()> {
 
     #[allow(unreachable_code)]
     Ok(())
+}
+
+fn get_state() -> u8 {
+    STATE.load(Ordering::Relaxed)
+}
+
+fn set_state(state: u8) {
+    STATE.store(state, Ordering::Relaxed);
 }
